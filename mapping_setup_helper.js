@@ -11,6 +11,14 @@ const mappingSetup = [
 		from: 'header_slideshow_blog',
 		to: 'core_v2_hero_slideshow',
 	},
+	{
+		from: 'header_slideshow_homepage',
+		to: 'core_v2_hero_slideshow',
+	},
+	{
+		from: 'deco_slider',
+		to: 'slider_preview_with_header_2_across_fullwidth',
+	},
 ];
 
 async function main() {
@@ -18,18 +26,43 @@ async function main() {
 		const initialConfig = await getYAML(client);
 		const redesignConfig = await getYAML(client_redesign);
 
+		if (!initialConfig) {
+			return client + ' was not found';
+		}
+
+		if (!redesignConfig) {
+			return client_redesign + ' was not found';
+		}
+		// Get list of all fields
 		const clientCollections = miscLib.varLookup(initialConfig, `settings.plugins.collections.settings.templates`);
 		const clientRedesignCollections = miscLib.varLookup(
 			redesignConfig,
 			`settings.plugins.collections.settings.templates`
 		);
+		const log = [];
 
 		const mappingResults = mappingSetup.map(({ from, to }) => {
-			const fromFields = getObjectFields(clientCollections, from).map(normalizeField);
-			const toFields = getObjectFields(clientRedesignCollections, to).map(normalizeField);
+			let fromFields = getObjectFields(clientCollections, from);
+			let toFields = getObjectFields(clientRedesignCollections, to);
+
+			// If either is not found, return an error
+			if (typeof fromFields === 'string' || typeof toFields === 'string') {
+				let notFound = [];
+				if (typeof fromFields === 'string') {
+					notFound.push(fromFields + ' (Old Client)');
+				}
+				if (typeof toFields === 'string') {
+					notFound.push(toFields + ' (Redesign)');
+				}
+
+				return `\n{\n		Widget not found:\n		${notFound.join('\n		')}\n}`;
+			}
+
+			fromFields = fromFields.map(normalizeField);
+			toFields = toFields.map(normalizeField);
 
 			// Find matched fields (name and either type or template)
-			const matchedFields = fromFields
+			const matched_fields = fromFields
 				.filter((field) =>
 					toFields.some(
 						(f) => f.name === field.name && (f.type === field.type || f.template === field.template)
@@ -41,23 +74,50 @@ async function main() {
 			const matched_but_wront_type = fromFields.reduce((acc, field) => {
 				const toField = toFields.find((f) => f.name === field.name);
 				if (toField && field.type !== toField.type) {
-					acc.push({ fieldName: field.name, type: field.type });
+					acc.push({ fieldName: field.name, type: field.type, redesignType: toField.type });
 				}
 				return acc;
 			}, []);
 
-			const map_or_delete = fromFields.filter((field) => !matchedFields.includes(field.name));
-			const optional_redesign_fields = toFields.filter((field) => !matchedFields.includes(field.name));
-			console.log({ from, to, cd: { map_or_delete, optional_redesign_fields, matched_but_wront_type } });
+			const map_or_delete = fromFields.filter((field) => !matched_fields.includes(field.name));
+			const optional_redesign_fields = toFields.filter((field) => !matched_fields.includes(field.name));
+			log.push({
+				['to_' + to]: {
+					fields: toFields,
+				},
+				['from_' + from]: {
+					fields: fromFields,
+				},
+				_Extra: {
+					matched_fields,
+					matched_but_wront_type,
+				},
+			});
+			return codeBlock(from, to, matched_fields, matched_but_wront_type, map_or_delete, optional_redesign_fields);
+		});
 
-			const codeBlock = `
+		console.log(log);
+		return mappingResults.join('');
+	} catch (e) {
+		console.log(e);
+		return e.message;
+	}
+}
+
+function codeBlock(from, to, matched_fields, matched_but_wront_type, map_or_delete, optional_redesign_fields) {
+	return `
 {
 	from: '${from}',
 	to: '${to}',
-	cb: (fields) => {
-		// Automatic ${matchedFields.map((field) => `${field.name}`).join(', ')}
+	cb: (fields) => {${
+		matched_fields.length ? `\n\n		// ${matched_fields.map((field) => `${field}`).join(', ')} exist in both. ` : ''
+	}${
+		matched_but_wront_type.length
+			? '\n\n		// Some fields have matched with mismatched types. Check _Extra in the console.'
+			: ''
+	}
 
-		// [MAP]
+		// [Optional MAP]
 		${
 			map_or_delete.length
 				? map_or_delete.map((field) => `// fields.target_field = fields.${field.name};`).join('\n		')
@@ -71,7 +131,7 @@ async function main() {
 				: '// Nothing to delete!'
 		}
 
-		[REDESIGN FIELDS]
+		// [REDESIGN FIELDS]
 		${
 			optional_redesign_fields
 				? optional_redesign_fields
@@ -84,37 +144,20 @@ async function main() {
 	}
 },
 `;
-
-			return codeBlock;
-		});
-
-		console.log(mappingResults);
-		return mappingResults.join('');
-	} catch (e) {
-		console.log(e);
-		return e.message;
-	}
 }
-
-function explainMap(from, to, map_or_delete, optional_redesign_fields) {
-	return codeBlock;
-}
-
 // Helper function to normalize field object (if template exists, use it as type)
 function normalizeField(field) {
 	return { ...field, type: field.template || field.type };
 }
 
-main();
-
-return main() || 'Nothing got pushed!';
+return main();
 
 function getObjectFields(arrOfObjects, objectName) {
 	const foundObject = arrOfObjects.find((obj) => obj.name === objectName);
 	if (foundObject) {
 		return foundObject.fields || {};
 	}
-	return [];
+	return objectName;
 }
 
 async function getYAML(client) {
@@ -133,66 +176,3 @@ async function getYAML(client) {
 	}
 	return null;
 }
-
-/*
-// code before cleanup for backup
-async function main() {
-	try {
-		const initialConfig = await getYAML(client);
-		const redesignConfig = await getYAML(client_redesign);
-
-		const clientCollections = miscLib.varLookup(initialConfig, `settings.plugins.collections.settings.templates`);
-		const clientRedesignCollections = miscLib.varLookup(
-			redesignConfig,
-			`settings.plugins.collections.settings.templates`
-		);
-
-		const mappingResults = mappingSetup.map(({ from, to }) => {
-			let fromFields = getObjectFields(clientCollections, from);
-			let toFields = getObjectFields(clientRedesignCollections, to);
-
-			// handle fields that use template instead of type
-			fromFields = fromFields.map((field) => {
-				if (field.template) {
-					field.type = field.template;
-					delete field.template;
-				}
-				return field;
-			});
-
-			const matchedFields = fromFields
-				.map(({ name }) => name)
-				.filter((field) => toFields.map(({ name }) => name).includes(field));
-
-			const wrongTypeMatch = matchedFields
-				.map((fieldName) => {
-					const fromClientField = fromFields.filter(({ name }) => name === fieldName)[0];
-					const toClientFields = toFields.filter(({ name }) => name === fieldName)[0];
-
-					return fromClientField.type !== toClientFields.type
-						? { fieldName, type: fromClientField.type }
-						: null;
-				})
-				.filter((x) => x);
-
-				
-			fromFields = fromFields.map(({ name }) => name);
-			toFields = toFields.map(({ name }) => name);
-
-			const fields_to_be_mapped_or_deleted = fromFields.filter((field) => !toFields.includes(field));
-			const remaining_redesign_fields = toFields.filter((field) => !matchedFields.includes(field));
-
-			console.log(wrongTypeMatch);
-			return { from, to, fields_to_be_mapped_or_deleted, remaining_redesign_fields, wrongTypeMatch };
-		});
-		console.log(mappingResults);
-		return mappingResults;
-	} catch (e) {
-		console.log(e);
-		return e.message;
-	}
-}
-
-
-
-*/
