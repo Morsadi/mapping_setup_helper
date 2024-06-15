@@ -1,13 +1,16 @@
-const client = 'amarillo';
-const client_redesign = 'amarillo-redesign';
+const initialClient = 'amarillo';
+const redesignClient = 'amarillo-redesign';
+const xmlPath = '/includes/client_public/mapping_sheet.xlsx';
 
-const siteLib = require('@sv/siteLib');
-const fs = require('fs');
-const fsLib = require('@sv/fsLib');
-const miscLib = require('@sv/miscLib');
+const siteLibrary = require('@sv/siteLib');
+const fileSystem = require('fs');
+const fileLibrary = require('@sv/fsLib');
+const miscellaneousLibrary = require('@sv/miscLib');
 const { log } = require('console');
 
-const mappingSetup = [
+const sheet = `${site.sv_site_config.siteConfigs.primary.urlNoSlash}${xmlPath}`;
+
+const mappingConfigurations = [
 	// {
 	// 	group: 'collection',
 	// 	from: 'header_slideshow_blog',
@@ -34,11 +37,11 @@ const mappingSetup = [
 	// 	to: 'two_col',
 	// 	group: 'panel',
 	// },
-	// {
-	// 	from: 'nav_share',
-	// 	to: 'container_navigation_share',
-	// 	group: 'panel',
-	// },
+	{
+		from: 'nav_share',
+		to: 'container_navigation_share',
+		group: 'panel',
+	},
 	{
 		from: 'three_col_even',
 		to: 'three_col',
@@ -46,115 +49,139 @@ const mappingSetup = [
 	},
 ];
 
-return init();
+return initialize();
 
-async function init() {
+async function initialize() {
 	try {
-		const initialConfig = await getYAML(client);
-		const redesignConfig = await getYAML(client_redesign);
+		const initialConfiguration = await loadYAMLConfig(initialClient);
+		const redesignConfiguration = await loadYAMLConfig(redesignClient);
+		const sheets = await getSheets(initialClient);
 
-		if (!initialConfig) {
-			return client + ' was not found';
+		if (!initialConfiguration) {
+			return initialClient + ' was not found';
 		}
 
-		if (!redesignConfig) {
-			return client_redesign + ' was not found';
+		if (!redesignConfiguration) {
+			return redesignClient + ' was not found';
 		}
+
+		// if (!sheets) {
+		// 	return 'No mapping sheets found';
+		// }
 		// Get list of all fields
-		mappingResults = await main(initialConfig, redesignConfig);
+		const mappingResults = await performMapping(initialConfiguration, redesignConfiguration);
 
 		return mappingResults;
-	} catch (e) {
-		console.log(e);
-		return e.message;
+	} catch (error) {
+		console.log(error);
+		return error.message;
 	}
 }
 
-async function main(initialConfig, redesignConfig) {
+async function performMapping(initialConfiguration, redesignConfiguration) {
 	try {
-		const mappingResults = mappingSetup
-			.map(({ group, from, to }) => {
+		const mappingResults = mappingConfigurations
+			.map(({ group, to: target, from: source }) => {
 				if (group === 'collection') {
-					return mapCollections(initialConfig, redesignConfig, from, to);
+					return mapCollectionFields(initialConfiguration, redesignConfiguration, source, target);
 				} else if (group === 'panel') {
-					return mapPanels(initialConfig, redesignConfig, from, to);
+					return mapPanelFields(initialConfiguration, redesignConfiguration, source, target);
 				}
 			})
 			.join('');
 
 		return mappingResults;
-	} catch (e) {
-		console.log(e);
-		return e.message;
+	} catch (error) {
+		console.log(error);
+		return error.message;
 	}
 }
 
-function mapPanels(initialConfig, redesignConfig, from, to) {
-	const clientPanels = miscLib.varLookup(initialConfig, `settings.plugins.common.settings.panels`);
-	const clientRedesignPanels = miscLib.varLookup(redesignConfig, `settings.plugins.common.settings.panels`);
-	const dataStructure = ['test'];
+function mapPanelFields(initialConfiguration, redesignConfiguration, source, target) {
+	const initialPanelFields = miscellaneousLibrary.varLookup(
+		initialConfiguration,
+		`settings.plugins.common.settings.panels`
+	);
+	const redesignPanelFields = miscellaneousLibrary.varLookup(
+		redesignConfiguration,
+		`settings.plugins.common.settings.panels`
+	);
 	const logs = [];
 
-	let fromInstance = clientPanels.find((obj) => obj.name === from);
-	let toInstance = clientRedesignPanels.find((obj) => obj.name === to);
+	let sourcePanel = initialPanelFields.find((obj) => obj.name === source);
+	let targetPanel = redesignPanelFields.find((obj) => obj.name === target);
 
-	if (fromInstance !== undefined || toInstance !== undefined) {
-		let notFound = [];
-		if (fromInstance === undefined) {
-			notFound.push(from + ' missing in ' + client);
+	if (sourcePanel !== undefined || targetPanel !== undefined) {
+		let missingFields = [];
+		if (sourcePanel === undefined) {
+			missingFields.push(source + ' missing in ' + initialClient);
 		}
-		if (toInstance === undefined) {
-			notFound.push(to + ' missing in ' + client_redesign);
+		if (targetPanel === undefined) {
+			missingFields.push(target + ' missing in ' + redesignClient);
 		}
 		// THIS NEEDS MORE REFINING AND TESTING
 	}
 
-	if (!fromInstance?.fields || !toInstance?.fields) {
+	if (!sourcePanel?.fields || !targetPanel?.fields) {
 		logs.push(`\n{\n		No fields to match.\n},\n`);
 		// THIS NEEDS MORE REFINING AND TESTING
 	}
 
-	let extractedSection = handleSections(fromInstance, toInstance);
+	const sectionComparison = compareSections(sourcePanel, targetPanel);
 
-	let fromFields = extractFields(clientPanels, from);
-	let toFields = extractFields(clientRedesignPanels, to);
+	const sourceFields = extractPanelFields(initialPanelFields, source);
+	const targetFields = extractPanelFields(redesignPanelFields, target);
 
-	if (!fromFields || !toFields) {
+	if (!sourceFields || !targetFields) {
 		logs.push(`\n{\n		No fields to match.\n},\n`);
 		// THIS NEEDS MORE REFINING AND TESTING
 	}
 
+	const { matchedFields, mismatchedFields, fieldsToMapOrDelete, optionalRedesignFields } = findMatchingFields(
+		sourceFields,
+		targetFields
+	);
 
+	const fieldsBlock = generateFieldsBlock(
+		matchedFields,
+		mismatchedFields,
+		fieldsToMapOrDelete,
+		optionalRedesignFields
+	);
 
-	
-
-	return panelCodeBlock(fromInstance.name, toInstance.name, extractedSection, 'Work in progress');
-	// return [fromFields, toFields];
-	// return JSON.stringify([fromFields, toFields], null, 2);
+	return generatePanelCodeBlock(sourcePanel.name, targetPanel.name, sectionComparison, fieldsBlock);
 }
 
-function handleSections(fromInstance, toInstance) {
+function compareSections(sourcePanel, targetPanel) {
 	let logs = [];
 
-	fromSections = fromInstance?.rows
-		? flattenSections(fromInstance.rows)
-		: 'No sections found in ' + fromInstance.name;
-	toSections = toInstance?.rows ? flattenSections(toInstance.rows) : 'No sections found in ' + toInstance.name;
+	const sourceSections = sourcePanel?.rows
+		? flattenSections(sourcePanel.rows)
+		: 'No sections found in ' + sourcePanel.name;
+	const targetSections = targetPanel?.rows
+		? flattenSections(targetPanel.rows)
+		: 'No sections found in ' + targetPanel.name;
 
-	const { matchedItems, unmatchedFromSections, unmatchedToSections } = matchSetup(toSections, fromSections);
-	// .map(section => `\n			// 'sectionToChange' :  '${toSections[section]}',`).join('');
+	const { matchedItems, unmatchedSourceSections, unmatchedTargetSections } = matchSections(
+		targetSections,
+		sourceSections
+	);
 	logs.push(`\n
 			// ${
 				matchedItems.length
 					? `'${matchedItems.join("', '")}' matched in both panels.${
-							unmatchedToSections.length ? ' Use Options to map the following' : ''
+							unmatchedTargetSections.length ? ' Use Options to map the following' : ''
 					  } `
-					: `${unmatchedToSections.length ? 'Use Options to map the following' : ''}`
+					: `${unmatchedTargetSections.length ? 'Use Options to map the following' : ''}`
 			}
-				${unmatchedToSections.length ? unmatchedToSections.map((section) => `\n			// 'TODO' :  '${section}',`).join('') : ''}
 				${
-					unmatchedFromSections.length
-						? `\n			// ----- Options ----- //\n			// '${unmatchedFromSections.reverse().join("', '")}'`
+					unmatchedTargetSections.length
+						? unmatchedTargetSections.map((section) => `\n			// 'TODO' :  '${section}',`).join('')
+						: ''
+				}
+				${
+					unmatchedSourceSections.length
+						? `\n			// ----- Options ----- //\n			// '${unmatchedSourceSections.reverse().join("', '")}'`
 						: ''
 				}
 `);
@@ -162,31 +189,29 @@ function handleSections(fromInstance, toInstance) {
 	return logs;
 }
 
-function matchSetup(toSections, fromSections) {
+function matchSections(targetSections, sourceSections) {
 	// Find matched items
-	const matchedItems = toSections.filter((item) => fromSections.includes(item));
+	const matchedItems = targetSections.filter((item) => sourceSections.includes(item));
 
-	// Find unmatched items in toSections
-	const unmatchedToSections = toSections.filter((item) => !fromSections.includes(item));
+	// Find unmatched items in targetSections
+	const unmatchedTargetSections = targetSections.filter((item) => !sourceSections.includes(item));
 
-	// Find unmatched items in fromSections
-	const unmatchedFromSections = fromSections.filter((item) => !toSections.includes(item));
+	// Find unmatched items in sourceSections
+	const unmatchedSourceSections = sourceSections.filter((item) => !targetSections.includes(item));
 
 	return {
-		unmatchedToSections,
-		unmatchedFromSections,
+		unmatchedTargetSections,
+		unmatchedSourceSections,
 		matchedItems,
 	};
 }
 
-function panelCodeBlock(from, to, extractedSection, extractedFields) {
-	return `\n{
-		from: '${from}',
-		to: '${to}',
-		mapSections: {${extractedSection}
-		},
-		cb: (fields) => {\n				${extractedFields}
-		}\n},`;
+function generatePanelCodeBlock(source, target, sectionComparison, fieldsBlock) {
+	return `{
+	from: '${source}',
+	to: '${target}',
+	mapSections: {${sectionComparison}
+	},\n				${fieldsBlock}\n},\n`;
 }
 
 function flattenSections(section) {
@@ -222,97 +247,103 @@ function flattenSections(section) {
 	return items;
 }
 
-function mapCollections(initialConfig, redesignConfig, from, to) {
+function mapCollectionFields(initialConfiguration, redesignConfiguration, source, target) {
 	// Get list of all fields
-	const clientCollections = miscLib.varLookup(initialConfig, `settings.plugins.collections.settings.templates`);
-	const clientRedesignCollections = miscLib.varLookup(
-		redesignConfig,
+	const initialCollectionFields = miscellaneousLibrary.varLookup(
+		initialConfiguration,
+		`settings.plugins.collections.settings.templates`
+	);
+	const redesignCollectionFields = miscellaneousLibrary.varLookup(
+		redesignConfiguration,
 		`settings.plugins.collections.settings.templates`
 	);
 	const dataLog = [];
 
-	// let fromFields = fetchFields(clientCollections, from);
-	// let toFields = fetchFields(clientRedesignCollections, to);
+	const sourceFields = extractPanelFields(initialCollectionFields, source);
+	const targetFields = extractPanelFields(redesignCollectionFields, target);
 
-	// if (typeof fromFields === 'string' || typeof toFields === 'string') {
-	// 	let notFound = [];
-	// 	if (typeof fromFields === 'string') {
-	// 		notFound.push(fromFields + ' (Old Client)');
-	// 	}
-	// 	if (typeof toFields === 'string') {
-	// 		notFound.push(toFields + ' (Redesign)');
-	// 	}
+	const { matchedFields, mismatchedFields, fieldsToMapOrDelete, optionalRedesignFields } = findMatchingFields(
+		sourceFields,
+		targetFields
+	);
 
-	// 	return `\n{\n		Collection not found:\n		${notFound.join('\n		')}\n}`;
-	// }
-
-	let fromFields = extractFields(clientCollections, from);
-	let toFields = extractFields(clientRedesignCollections, to);
-
-	const matched_fields = fromFields
-		.filter((field) =>
-			toFields.some((f) => f.name === field.name && (f.type === field.type || f.template === field.template))
-		)
-		.map((field) => field.name);
-
-	const matched_but_wrong_type = fromFields.reduce((acc, field) => {
-		const toField = toFields.find((f) => f.name === field.name);
-		if (toField && field.type !== toField.type) {
-			acc.push({ fieldName: field.name, type: field.type, redesignType: toField.type });
-		}
-		return acc;
-	}, []);
-
-	const map_or_delete = fromFields.filter((field) => !matched_fields.includes(field.name));
-	const optional_redesign_fields = toFields.filter((field) => !matched_fields.includes(field.name));
-
-	dataLog.push({
-		['to_' + to]: {
-			fields: toFields,
-		},
-		['from_' + from]: {
-			fields: fromFields,
-		},
-		_Extra: {
-			matched_fields,
-			matched_but_wrong_type,
-		},
-	});
-	// console.log(dataLog);
-	return codeBlock(from, to, matched_fields, matched_but_wrong_type, map_or_delete, optional_redesign_fields);
+	return generateCodeBlock(
+		source,
+		target,
+		matchedFields,
+		mismatchedFields,
+		fieldsToMapOrDelete,
+		optionalRedesignFields
+	);
 }
 
-function codeBlock(from, to, matched_fields, matched_but_wront_type, map_or_delete, optional_redesign_fields) {
+function findMatchingFields(sourceFields, targetFields) {
+	const matchedFields = sourceFields
+		? sourceFields
+				.filter((field) =>
+					targetFields.some(
+						(f) => f.name === field.name && (f.type === field.type || f.template === field.template)
+					)
+				)
+				.map((field) => field.name)
+		: [];
+
+	const mismatchedFields = sourceFields
+		? sourceFields.reduce((acc, field) => {
+				const targetField = targetFields.find((f) => f.name === field.name);
+				if (targetField && field.type !== targetField.type) {
+					acc.push({ fieldName: field.name, type: field.type, redesignType: targetField.type });
+				}
+				return acc;
+		  }, [])
+		: [];
+
+	const fieldsToMapOrDelete = sourceFields ? sourceFields.filter((field) => !matchedFields.includes(field.name)) : [];
+	const optionalRedesignFields = targetFields
+		? targetFields.filter((field) => !matchedFields.includes(field.name))
+		: [];
+
+	return { matchedFields, mismatchedFields, fieldsToMapOrDelete, optionalRedesignFields };
+}
+
+function generateCodeBlock(
+	source,
+	target,
+	matchedFields,
+	mismatchedFields,
+	fieldsToMapOrDelete,
+	optionalRedesignFields
+) {
 	return `
 {
-	from: '${from}',
-	to: '${to}',
+	from: '${source}',
+	to: '${target}',
 	cb: (fields) => {${
-		matched_fields.length ? `\n\n		// ${matched_fields.map((field) => `${field}`).join(', ')} exist in both. ` : ''
+		matchedFields.length ? `\n\n		// ${matchedFields.map((field) => `${field}`).join(', ')} exist in both. ` : ''
 	}${
-		matched_but_wront_type.length
+		mismatchedFields.length
 			? '\n\n		// Some fields have matched with mismatched types. Check _Extra in the console.'
 			: ''
 	}
 
 		// [Optional MAP]
 		${
-			map_or_delete.length
-				? map_or_delete.map((field) => `// fields.target_field = fields.${field.name};`).join('\n		')
+			fieldsToMapOrDelete.length
+				? fieldsToMapOrDelete.map((field) => `// fields.target_field = fields.${field.name};`).join('\n		')
 				: "// The old template doesn't have any fields!"
 		}
 
 		// [DELETE]
 		${
-			map_or_delete.length
-				? map_or_delete.map((field) => `delete fields.${field.name};`).join('\n		')
+			fieldsToMapOrDelete.length
+				? fieldsToMapOrDelete.map((field) => `delete fields.${field.name};`).join('\n		')
 				: '// Nothing to delete!'
 		}
 
 		// [REDESIGN FIELDS]
 		${
-			optional_redesign_fields
-				? optional_redesign_fields
+			optionalRedesignFields
+				? optionalRedesignFields
 						.map((field) => `// ${field.name} ${field.required ? '(required)' : ''}`)
 						.join('\n		')
 				: ''
@@ -324,8 +355,68 @@ function codeBlock(from, to, matched_fields, matched_but_wront_type, map_or_dele
 `;
 }
 
-function extractFields(instanceSetup, name) {
-	let fields = fetchFields(instanceSetup, name);
+function generateFieldsBlock(matchedFields, mismatchedFields, fieldsToMapOrDelete, optionalRedesignFields) {
+	console.log(optionalRedesignFields);
+	return `
+	cb: (fields) => {${
+		matchedFields.length ? `\n\n		// ${matchedFields.map((field) => `${field}`).join(', ')} exist in both. ` : ''
+	}${
+		mismatchedFields.length
+			? '\n\n		// Some fields have matched with mismatched types. Check _Extra in the console.'
+			: ''
+	}
+
+		// [Optional MAP]
+		${
+			fieldsToMapOrDelete.length
+				? fieldsToMapOrDelete.map((field) => `// fields.target_field = fields.${field.name};`).join('\n		')
+				: "// The old template doesn't have any fields!"
+		}
+
+		// [DELETE]
+		${
+			fieldsToMapOrDelete.length
+				? fieldsToMapOrDelete.map((field) => `delete fields.${field.name};`).join('\n		')
+				: '// Nothing to delete!'
+		}
+
+		// [REDESIGN FIELDS]
+		${
+			optionalRedesignFields
+				? optionalRedesignFields
+						.map(
+							(field) =>
+								`// '${field.name}' ${
+									field.required
+										? `(required) ${
+												field?.moduleForm?.options
+													? `with ${
+															field?.moduleForm?.options.length
+													  } options: ${field?.moduleForm?.options
+															.map((option) => "'" + option.value + "'")
+															.join(', ')}`
+													: ''
+										  }`
+										: field?.moduleForm?.options && field?.moduleForm?.options.length > 0
+										? `with ${
+												field?.moduleForm?.options.length
+										  } options: ${field?.moduleForm?.options
+												.map((option) => "'" + option.value + "'")
+												.join(', ')}`
+										: ''
+								}`
+						)
+						.join('\n		')
+				: ''
+		}
+
+		return fields;
+	}
+`;
+}
+
+function extractPanelFields(instanceSetup, name) {
+	const fields = findFields(instanceSetup, name);
 
 	if (!fields) {
 		return;
@@ -339,7 +430,7 @@ function normalizeField(field) {
 	return { ...field, type: field.template || field.type };
 }
 
-function fetchFields(arrOfObjects, objectName) {
+function findFields(arrOfObjects, objectName) {
 	const foundObject = arrOfObjects.find((obj) => obj.name === objectName);
 	if (foundObject) {
 		return foundObject.fields || null;
@@ -347,19 +438,39 @@ function fetchFields(arrOfObjects, objectName) {
 	return objectName;
 }
 
-async function getYAML(client) {
-	const rootPath = `${siteLib.getServerPath()}clients/${client}`;
+async function loadYAMLConfig(clientName) {
+	const rootPath = `${siteLibrary.getServerPath()}clients/${clientName}`;
 	const yamlPath = `${rootPath}/clientConfig.yaml`;
 	let yamlExists = true;
 	try {
-		await fs.promises.stat(yamlPath);
-	} catch (e) {
+		await fileSystem.promises.stat(yamlPath);
+	} catch (error) {
 		yamlExists = false;
 	}
 
 	if (yamlExists) {
-		const config = await fsLib.promises.readYAML(yamlPath);
+		const config = await fileLibrary.promises.readYAML(yamlPath);
 		return config;
+	}
+	return null;
+}
+async function getSheets(clientName) {
+	const rootPath = `${siteLibrary.getServerPath()}clients/${clientName}`;
+	const sheetsPath = `${rootPath}/client/mapping_sheets.xlsx`;
+
+	let sheetsExists = true;
+	try {
+		await fileSystem.promises.stat(sheet);
+	} catch (error) {
+		sheetsExists = false;
+	}
+
+	if (sheetsExists) {
+		const workbook = xlsx.readFile(sheetsPath);
+		const sheetName = workbook.SheetNames[0];
+		const sheet = workbook.Sheets[sheetName];
+		const jsonData = xlsx.utils.sheet_to_json(sheet);
+		return jsonData;
 	}
 	return null;
 }
