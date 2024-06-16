@@ -11,16 +11,16 @@ const { log } = require('console');
 const sheet = `${site.sv_site_config.siteConfigs.primary.urlNoSlash}${xmlPath}`;
 
 const mappingConfigurations = [
-	// {
-	// 	group: 'collection',
-	// 	from: 'header_slideshow_blog',
-	// 	to: 'core_v2_hero_slideshow',
-	// },
-	// {
-	// 	group: 'collection',
-	// 	from: 'header_slideshow_homepage',
-	// 	to: 'core_v2_hero_slideshow',
-	// },
+	{
+		group: 'collection',
+		from: 'header_slideshow_blog',
+		to: 'core_v2_hero_slideshow',
+	},
+	{
+		group: 'collection',
+		from: 'header_slideshow_homepage',
+		to: 'core_v2_hero_slideshow',
+	},
 	{
 		group: 'collection',
 		from: 'deco_slider',
@@ -32,11 +32,12 @@ const mappingConfigurations = [
 		to: 'two_col',
 		group: 'panel',
 	},
-	// {
-	// 	from: 'two_col_even',
-	// 	to: 'two_col',
-	// 	group: 'panel',
-	// },
+
+	{
+		from: 'two_col_even',
+		to: 'two_col',
+		group: 'panel',
+	},
 	{
 		from: 'nav_share',
 		to: 'container_navigation_share',
@@ -83,9 +84,9 @@ async function performMapping(initialConfiguration, redesignConfiguration) {
 		const mappingResults = mappingConfigurations
 			.map(({ group, to: target, from: source }) => {
 				if (group === 'collection') {
-					return mapCollectionFields(initialConfiguration, redesignConfiguration, source, target);
+					return mapCollections(initialConfiguration, redesignConfiguration, source, target);
 				} else if (group === 'panel') {
-					return mapPanelFields(initialConfiguration, redesignConfiguration, source, target);
+					return mapPanels(initialConfiguration, redesignConfiguration, source, target);
 				}
 			})
 			.join('');
@@ -97,7 +98,7 @@ async function performMapping(initialConfiguration, redesignConfiguration) {
 	}
 }
 
-function mapPanelFields(initialConfiguration, redesignConfiguration, source, target) {
+function mapPanels(initialConfiguration, redesignConfiguration, source, target) {
 	const initialPanelFields = miscellaneousLibrary.varLookup(
 		initialConfiguration,
 		`settings.plugins.common.settings.panels`
@@ -170,20 +171,22 @@ function compareSections(sourcePanel, targetPanel) {
 			// ${
 				matchedItems.length
 					? `'${matchedItems.join("', '")}' matched in both panels.${
-							unmatchedTargetSections.length ? ' Use Options to map the following' : ''
+							unmatchedTargetSections.length ? ' Use Redesign sections to map the remaining sec' : ''
 					  } `
-					: `${unmatchedTargetSections.length ? 'Use Options to map the following' : ''}`
+					: `${unmatchedTargetSections.length ? 'Use Redesign sections to map the following' : ''}`
 			}
-				${
-					unmatchedTargetSections.length
-						? unmatchedTargetSections.map((section) => `\n			// 'TODO' :  '${section}',`).join('')
-						: ''
-				}
-				${
-					unmatchedSourceSections.length
-						? `\n			// ----- Options ----- //\n			// '${unmatchedSourceSections.reverse().join("', '")}'`
-						: ''
-				}
+
+			${
+				unmatchedSourceSections.length
+					? unmatchedSourceSections.map((section) => `\n			// '${section}' :  'TODO',`).join('')
+					: ''
+			}
+
+			${
+				unmatchedTargetSections.length
+					? `\n			// ----- INITIAL SECTIONS ----- //\n			// '${unmatchedTargetSections.reverse().join("', '")}'`
+					: ''
+			}
 `);
 
 	return logs;
@@ -211,7 +214,14 @@ function generatePanelCodeBlock(source, target, sectionComparison, fieldsBlock) 
 	from: '${source}',
 	to: '${target}',
 	mapSections: {${sectionComparison}
-	},\n				${fieldsBlock}\n},\n`;
+	},
+	${fieldsBlock}\n},\n`;
+}
+function generateCollectionCodeBlock(source, target, fieldsBlock) {
+	return `{
+	from: '${source}',
+	to: '${target}',
+	${fieldsBlock}\n},\n`;
 }
 
 function flattenSections(section) {
@@ -247,7 +257,7 @@ function flattenSections(section) {
 	return items;
 }
 
-function mapCollectionFields(initialConfiguration, redesignConfiguration, source, target) {
+function mapCollections(initialConfiguration, redesignConfiguration, source, target) {
 	// Get list of all fields
 	const initialCollectionFields = miscellaneousLibrary.varLookup(
 		initialConfiguration,
@@ -257,7 +267,6 @@ function mapCollectionFields(initialConfiguration, redesignConfiguration, source
 		redesignConfiguration,
 		`settings.plugins.collections.settings.templates`
 	);
-	const dataLog = [];
 
 	const sourceFields = extractPanelFields(initialCollectionFields, source);
 	const targetFields = extractPanelFields(redesignCollectionFields, target);
@@ -267,14 +276,22 @@ function mapCollectionFields(initialConfiguration, redesignConfiguration, source
 		targetFields
 	);
 
-	return generateCodeBlock(
-		source,
-		target,
+	const fieldsBlock = generateFieldsBlock(
 		matchedFields,
 		mismatchedFields,
 		fieldsToMapOrDelete,
 		optionalRedesignFields
 	);
+	return generateCollectionCodeBlock(source, target, fieldsBlock);
+
+	// return generateCodeBlock(
+	// 	source,
+	// 	target,
+	// 	matchedFields,
+	// 	mismatchedFields,
+	// 	fieldsToMapOrDelete,
+	// 	optionalRedesignFields
+	// );
 }
 
 function findMatchingFields(sourceFields, targetFields) {
@@ -306,98 +323,37 @@ function findMatchingFields(sourceFields, targetFields) {
 	return { matchedFields, mismatchedFields, fieldsToMapOrDelete, optionalRedesignFields };
 }
 
-function generateCodeBlock(
-	source,
-	target,
-	matchedFields,
-	mismatchedFields,
-	fieldsToMapOrDelete,
-	optionalRedesignFields
-) {
-	return `
-{
-	from: '${source}',
-	to: '${target}',
-	cb: (fields) => {${
-		matchedFields.length ? `\n\n		// ${matchedFields.map((field) => `${field}`).join(', ')} exist in both. ` : ''
-	}${
-		mismatchedFields.length
-			? '\n\n		// Some fields have matched with mismatched types. Check _Extra in the console.'
-			: ''
-	}
-
-		// [Optional MAP]
-		${
-			fieldsToMapOrDelete.length
-				? fieldsToMapOrDelete.map((field) => `// fields.target_field = fields.${field.name};`).join('\n		')
-				: "// The old template doesn't have any fields!"
-		}
-
-		// [DELETE]
-		${
-			fieldsToMapOrDelete.length
-				? fieldsToMapOrDelete.map((field) => `delete fields.${field.name};`).join('\n		')
-				: '// Nothing to delete!'
-		}
-
-		// [REDESIGN FIELDS]
-		${
-			optionalRedesignFields
-				? optionalRedesignFields
-						.map((field) => `// ${field.name} ${field.required ? '(required)' : ''}`)
-						.join('\n		')
-				: ''
-		}
-
-		return fields;
-	}
-},
-`;
-}
-
 function generateFieldsBlock(matchedFields, mismatchedFields, fieldsToMapOrDelete, optionalRedesignFields) {
-	console.log(optionalRedesignFields);
-	return `
-	cb: (fields) => {${
-		matchedFields.length ? `\n\n		// ${matchedFields.map((field) => `${field}`).join(', ')} exist in both. ` : ''
+	return `cb: (fields) => {${
+		matchedFields.length ? `\n\n		// ${matchedFields.map((field) => `'${field}'`).join(', ')} exist in both. ` : ''
 	}${
 		mismatchedFields.length
 			? '\n\n		// Some fields have matched with mismatched types. Check _Extra in the console.'
 			: ''
 	}
 
-		// [Optional MAP]
 		${
 			fieldsToMapOrDelete.length
-				? fieldsToMapOrDelete.map((field) => `// fields.target_field = fields.${field.name};`).join('\n		')
+				? `// [INITIAL FIELDS]\n		${fieldsToMapOrDelete
+						.map((field) => `// fields.REDESIGN_FIELD = fields.${field.name};`)
+						.join('\n		')}`
 				: "// The old template doesn't have any fields!"
 		}
+		${optionalRedesignFields.some((field) => field.required) ? '\n\n		// [REQUIRED REDESIGN FIELDS]' : ''}
+		${optionalRedesignFields
+			.filter((field) => field.required)
+			.map((field) => `fields.${field.name} = 'DEFAULT';`)
+			.join('\n		')}
 
-		// [DELETE]
-		${
-			fieldsToMapOrDelete.length
-				? fieldsToMapOrDelete.map((field) => `delete fields.${field.name};`).join('\n		')
-				: '// Nothing to delete!'
-		}
-
-		// [REDESIGN FIELDS]
+		// [REMAINING REDESIGN FIELDS]
 		${
 			optionalRedesignFields
 				? optionalRedesignFields
+						.filter((field) => !field.required)
 						.map(
 							(field) =>
 								`// '${field.name}' ${
-									field.required
-										? `(required) ${
-												field?.moduleForm?.options
-													? `with ${
-															field?.moduleForm?.options.length
-													  } options: ${field?.moduleForm?.options
-															.map((option) => "'" + option.value + "'")
-															.join(', ')}`
-													: ''
-										  }`
-										: field?.moduleForm?.options && field?.moduleForm?.options.length > 0
+									field?.moduleForm?.options && field?.moduleForm?.options.length > 0
 										? `with ${
 												field?.moduleForm?.options.length
 										  } options: ${field?.moduleForm?.options
@@ -410,9 +366,15 @@ function generateFieldsBlock(matchedFields, mismatchedFields, fieldsToMapOrDelet
 				: ''
 		}
 
+		// [DELETE]
+		${
+			fieldsToMapOrDelete.length
+				? fieldsToMapOrDelete.map((field) => `delete fields.${field.name};`).join('\n		')
+				: '// Nothing to delete!'
+		}
+
 		return fields;
-	}
-`;
+	}`;
 }
 
 function extractPanelFields(instanceSetup, name) {
@@ -436,6 +398,53 @@ function findFields(arrOfObjects, objectName) {
 		return foundObject.fields || null;
 	}
 	return objectName;
+}
+
+function generateWidgetCodeBlock(source, target, sectionComparison, fieldsBlock) {
+	return `{
+	from: '${source}',
+	to: '${target}',
+	update: [${sectionComparison}
+		${fieldsBlock}
+	]
+},\n`;
+}
+
+function generateFieldsBlockForWidgets(matchedFields, mismatchedFields, fieldsToMapOrDelete, optionalRedesignFields) {
+	return `{
+			$rename: {
+				// 'data.sourceField': 'data.targetField',
+				${matchedFields.length ? matchedFields.map((field) => `// 'data.${field}': 'data.${field}',`).join('\n				') : ''}
+			},
+		},
+		{
+			$set: {
+				// 'data.newField': 'defaultValue',
+				${
+					optionalRedesignFields.length
+						? optionalRedesignFields.map((field) => `// 'data.${field.name}': 'defaultValue',`).join('\n				')
+						: ''
+				}
+			},
+		},
+		// Mismatched fields:
+		${
+			mismatchedFields.length
+				? mismatchedFields
+						.map(
+							(field) =>
+								`// 'data.${field.fieldName}' (type: ${field.type}) doesn't match 'data.${field.fieldName}' (redesign type: ${field.redesignType})`
+						)
+						.join('\n		')
+				: '// No mismatched fields'
+		}
+		// Fields to map or delete:
+		${
+			fieldsToMapOrDelete.length
+				? fieldsToMapOrDelete.map((field) => `// 'data.${field.name}' to be mapped or deleted`).join('\n		')
+				: '// No fields to map or delete'
+		}
+	`;
 }
 
 async function loadYAMLConfig(clientName) {
