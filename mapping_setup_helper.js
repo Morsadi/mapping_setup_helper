@@ -1,32 +1,37 @@
-const xmlPath = '/includes/client_public/mapping_sheet.xlsx';
 const siteLibrary = require('@sv/siteLib');
 const fileSystem = require('fs');
 const fileLibrary = require('@sv/fsLib');
 const miscellaneousLibrary = require('@sv/miscLib');
-const sheet = `${site.sv_site_config.siteConfigs.primary.urlNoSlash}${xmlPath}`;
 
-const initialClient = 'amarillo';
-const redesignClient = 'amarillo-redesign';
+// Update to your client names
+const initialClient = '';
+const redesignClient = '';
 
 const mappingConfigurations = [
-	// ---Examples ----
+	// ------------------
+	// Result explanation https://app.screencast.com/BXhFILQdjpnOS
+	// This script is still in development. Make sure to have the GROUP specified. Don't include prefixes like plugins_common_
+	//  Things you need: group, from, and to
+	// ------------------
+	
 	// {
 	// 	group: 'collection',
-	// 	from: 'deco_slider',
-	// 	to: 'slider_preview_with_header_2_across_fullwidth',
+	// 	from: 'header_slideshow_interior',
+	// 	to: 'core_v2_hero_image',
 	// },
-	// // Panels
 	// {
-	// 	from: 'two_col_sidebar_right',
-	// 	to: 'two_col',
 	// 	group: 'panel',
+	// 	from: 'three_col_even',
+	// 	to: 'three_col',
 	// },
 	// {
 	// 	group: 'widget',
-	// 	from: 'simple_button',
-	// 	to: 'button',
+	// 	from: 'gdpr_banner',
+	// 	to: 'cookie_banner',
 	// },
 ];
+
+// ----------------- DO NOT EDIT BELOW THIS LINE -----------------
 
 return initialize();
 
@@ -34,7 +39,7 @@ async function initialize() {
 	try {
 		const initialConfiguration = await loadYAMLConfig(initialClient);
 		const redesignConfiguration = await loadYAMLConfig(redesignClient);
-		const sheets = await getSheets(initialClient);
+		const sheets = await getSheets(redesignClient);
 
 		if (!initialConfiguration) {
 			return initialClient + ' was not found';
@@ -44,9 +49,10 @@ async function initialize() {
 			return redesignClient + ' was not found';
 		}
 
-		// if (!sheets) {
-		// 	return 'No mapping sheets found';
-		// }
+		if (sheets) {
+			// console.log(sheets);
+			// return JSON.stringify(sheets, null, 2);
+		}
 		// Get list of all fields
 		const mappingResults = await performMapping(initialConfiguration, redesignConfiguration);
 
@@ -408,8 +414,8 @@ function findFields(arrOfObjects, objectName) {
 
 function generateWidgetCodeBlock(source, target, fieldsBlock) {
 	return `{
-	from: '${source}',
-	to: '${target}',
+	from: 'plugins_common_${source}',
+	to: 'plugins_common_${target}',
 	update: [
 		${fieldsBlock}
 	]
@@ -477,21 +483,53 @@ async function loadYAMLConfig(clientName) {
 }
 async function getSheets(clientName) {
 	const rootPath = `${siteLibrary.getServerPath()}clients/${clientName}`;
-	const sheetsPath = `${rootPath}/client/mapping_sheets.xlsx`;
+	const csvPath = `${rootPath}/public/mapping_sheet.csv`;
+	let csvExists = true;
 
-	let sheetsExists = true;
 	try {
-		await fileSystem.promises.stat(sheet);
+		await fileSystem.promises.stat(csvPath);
 	} catch (error) {
-		sheetsExists = false;
+		csvExists = false;
 	}
 
-	if (sheetsExists) {
-		const workbook = xlsx.readFile(sheetsPath);
-		const sheetName = workbook.SheetNames[0];
-		const sheet = workbook.Sheets[sheetName];
-		const jsonData = xlsx.utils.sheet_to_json(sheet);
-		return jsonData;
+	if (csvExists) {
+		// console.log(csvExists)
+		try {
+			const config = await readCSV(csvPath);
+			return config;
+		} catch (error) {
+			console.error('Error reading CSV:', error);
+			return null;
+		}
 	}
 	return null;
+}
+async function readCSV(filePath) {
+	const data = await fileSystem.promises.readFile(filePath, 'utf8');
+	const rows = data.split('\n');
+	const headers = rows[0].split(',').map((header) => header.trim());
+
+	return rows.slice(1).map((row) => {
+		const values = row.split(',').map((value) => value.trim());
+
+		const instance = headers.reduce((instance, header, index) => {
+			if (values[index]) {
+				instance[header] = values[index];
+			}
+
+			return instance;
+		}, {});
+
+		let mappingConfigurations = [];
+
+		if (instance['status'] === 'MAP') {
+			mappingConfigurations.push({
+				group: instance[headers[headers.indexOf('type')]],
+				from: instance[headers[headers.indexOf('find_name')]],
+				to: instance[headers[headers.indexOf('map_to')]],
+			});
+		}
+
+		return mappingConfigurations;
+	});
 }
