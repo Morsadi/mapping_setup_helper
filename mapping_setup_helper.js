@@ -70,12 +70,18 @@ async function performMapping(initialConfiguration, redesignConfiguration) {
 	try {
 		const mappingResults = mappingConfigurations
 			.map(({ group, to: target, from: source }) => {
+				if (!target || !source) {
+					return `{\n		target or source were not provided\n},\n`;
+				}
+
 				if (group === 'collection') {
 					return mapCollections(initialConfiguration, redesignConfiguration, source, target);
 				} else if (group === 'panel') {
 					return mapPanels(initialConfiguration, redesignConfiguration, source, target);
 				} else if (group === 'widget') {
 					return mapWidgets(initialConfiguration, redesignConfiguration, source, target);
+				} else {
+					return `{\n		Group not found\n},\n\n`;
 				}
 			})
 			.join('');
@@ -98,6 +104,13 @@ function mapWidgets(initialConfiguration, redesignConfiguration, from, to) {
 	);
 	const sourceFields = extractFields(initialWidgetFields, from);
 	const targetFields = extractFields(redesignWidgetFields, to);
+
+	if (typeof targetFields === 'string') {
+		return `{\n		Redesign config doesn't have ${to}\n},\n\n`;
+	}
+	if (typeof sourceFields === 'string') {
+		return `{\n		Initial config doesn't have ${from}\n},\n\n`;
+	}
 
 	const {
 		matchedFields,
@@ -129,15 +142,11 @@ function mapPanels(initialConfiguration, redesignConfiguration, from, to) {
 	let sourcePanel = initialPanelFields.find((obj) => obj.name === from);
 	let targetPanel = redesignPanelFields.find((obj) => obj.name === to);
 
-	if (sourcePanel !== undefined || targetPanel !== undefined) {
-		let missingFields = [];
-		if (sourcePanel === undefined) {
-			missingFields.push(from + ' missing in ' + initialClient);
-		}
-		if (targetPanel === undefined) {
-			missingFields.push(to + ' missing in ' + redesignClient);
-		}
-		// THIS NEEDS MORE REFINING AND TESTING
+	if (sourcePanel === undefined) {
+		return `{\n		Initial config doesn't have ${from}\n},\n\n`;
+	}
+	if (targetPanel === undefined) {
+		return `{\n		Redesign config doesn't have ${to}\n},\n\n`;
 	}
 
 	if (!sourcePanel?.fields || !targetPanel?.fields) {
@@ -153,6 +162,13 @@ function mapPanels(initialConfiguration, redesignConfiguration, from, to) {
 	if (!sourceFields || !targetFields) {
 		logs.push(`\n{\n		No fields to match.\n},\n`);
 		// THIS NEEDS MORE REFINING AND TESTING
+	}
+
+	if (typeof targetFields === 'string') {
+		return `{\n		Redesign config doesn't have ${to}\n},\n\n`;
+	}
+	if (typeof sourceFields === 'string') {
+		return `{\n		Initial config doesn't have ${from}\n},\n\n`;
 	}
 
 	const { matchedFields, mismatchedFields, remainingInitialFields, remainingRedesignFields } = findMatchingFields(
@@ -288,6 +304,13 @@ function mapCollections(initialConfiguration, redesignConfiguration, source, tar
 	const sourceFields = extractFields(initialCollectionFields, source);
 	const targetFields = extractFields(redesignCollectionFields, target);
 
+	if (typeof targetFields === 'string') {
+		return `{\n		Redesign config doesn't have ${target}\n},\n\n`;
+	}
+	if (typeof sourceFields === 'string') {
+		return `{\n		Initial config doesn't have ${source}\n},\n\n`;
+	}
+
 	const { matchedFields, mismatchedFields, remainingInitialFields, remainingRedesignFields } = findMatchingFields(
 		sourceFields,
 		targetFields
@@ -303,6 +326,9 @@ function mapCollections(initialConfiguration, redesignConfiguration, source, tar
 }
 
 function findMatchingFields(sourceFields, targetFields) {
+	if (typeof sourceFields === 'string') {
+		sourceFields = [];
+	}
 	const matchedFields = sourceFields
 		? sourceFields
 				.filter((field) =>
@@ -390,13 +416,11 @@ function generateFieldsBlock(matchedFields, mismatchedFields, remainingInitialFi
 }
 
 function extractFields(instanceSetup, name) {
-	const fields = findFields(instanceSetup, name);
+	const res = Array.isArray(findFields(instanceSetup, name))
+		? findFields(instanceSetup, name).map(normalizeField)
+		: findFields(instanceSetup, name);
 
-	if (!fields) {
-		return;
-	}
-
-	return fields.map(normalizeField);
+	return res;
 }
 
 // Helper function to normalize field object (if template exists, use it as type)
@@ -404,16 +428,17 @@ function normalizeField(field) {
 	return { ...field, type: field.template || field.type };
 }
 
-function findFields(arrOfObjects, objectName) {
-	const foundObject = arrOfObjects.find((obj) => obj.name === objectName);
-	if (foundObject) {
-		return foundObject.fields || null;
+function findFields(arrOfObjects, instanceName) {
+	const res = arrOfObjects.find((obj) => obj.name === instanceName);
+	if (res) {
+		return res.fields || [];
+	} else {
+		return instanceName + ' not found!';
 	}
-	return objectName;
 }
 
 function generateWidgetCodeBlock(source, target, fieldsBlock) {
-	return `{
+	return `{{
 	from: 'plugins_common_${source}',
 	to: 'plugins_common_${target}',
 	update: [
