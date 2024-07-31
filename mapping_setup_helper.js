@@ -13,7 +13,6 @@ const mappingConfigurations = [
 	// This script is still in development. Make sure to have the GROUP specified. Don't include prefixes like plugins_common_
 	//  Things you need: group, from, and to
 	// ------------------
-	
 	// {
 	// 	group: 'collection',
 	// 	from: 'header_slideshow_interior',
@@ -217,7 +216,7 @@ function compareSections(sourcePanel, targetPanel) {
 
 			${
 				unmatchedTargetSections.length
-					? `\n			// ----- INITIAL SECTIONS ----- //\n			// '${unmatchedTargetSections.reverse().join("', '")}'`
+					? `\n			// ----- REDESIGN SECTIONS ----- //\n			// '${unmatchedTargetSections.reverse().join("', '")}'`
 					: ''
 			}
 `);
@@ -438,7 +437,7 @@ function findFields(arrOfObjects, instanceName) {
 }
 
 function generateWidgetCodeBlock(source, target, fieldsBlock) {
-	return `{{
+	return `{
 	from: 'plugins_common_${source}',
 	to: 'plugins_common_${target}',
 	update: [
