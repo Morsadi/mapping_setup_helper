@@ -2,10 +2,11 @@ const siteLibrary = require('@sv/siteLib');
 const fileSystem = require('fs');
 const fileLibrary = require('@sv/fsLib');
 const miscellaneousLibrary = require('@sv/miscLib');
+const { group } = require('console');
 
 // Update to your client names
-const initialClient = '';
-const redesignClient = '';
+const initialClient = 'chapelhill';
+const redesignClient = 'chapelhill-redesign';
 
 const mappingConfigurations = [
 	// ------------------
@@ -104,11 +105,42 @@ function mapWidgets(initialConfiguration, redesignConfiguration, from, to) {
 	const sourceFields = extractFields(initialWidgetFields, from);
 	const targetFields = extractFields(redesignWidgetFields, to);
 
+	// -------------------- Static Data --------------------
+	// const sourceFields = [
+	// 	{
+	// 		name: 'alignmnt',
+	// 		label: 'Alignment',
+	// 		type: 'radio',
+	// 		moduleGlobal: {
+	// 			options: [
+	// 				{ label: 'Left', value: 'align_left' },
+	// 				{ label: 'Center', value: 'align_center' },
+	// 				{ label: 'Right', value: 'align_right' },
+	// 			],
+	// 		},
+	// 	},
+	// ];
+
+	// const targetFields = [
+	// 	{
+	// 		name: 'alignment',
+	// 		label: 'Alignment',
+	// 		type: 'radio',
+	// 		moduleGlobal: {
+	// 			options: [
+	// 				{ label: 'Left', value: 'align-left' },
+	// 				{ label: 'Center', value: 'align-center' },
+	// 				{ label: 'Right', value: 'align-right' },
+	// 			],
+	// 		},
+	// 	},
+	// ];
+
 	if (typeof targetFields === 'string') {
-		return `{\n		Redesign config doesn't have ${to}\n},\n\n`;
+		return `{\n		Redesign config doesn't have ${to} widget\n},\n\n`;
 	}
 	if (typeof sourceFields === 'string') {
-		return `{\n		Initial config doesn't have ${from}\n},\n\n`;
+		return `{\n		Initial config doesn't have ${from} widget\n},\n\n`;
 	}
 
 	const {
@@ -142,10 +174,10 @@ function mapPanels(initialConfiguration, redesignConfiguration, from, to) {
 	let targetPanel = redesignPanelFields.find((obj) => obj.name === to);
 
 	if (sourcePanel === undefined) {
-		return `{\n		Initial config doesn't have ${from}\n},\n\n`;
+		return `{\n		Initial config doesn't have ${from} panel\n},\n\n`;
 	}
 	if (targetPanel === undefined) {
-		return `{\n		Redesign config doesn't have ${to}\n},\n\n`;
+		return `{\n		Redesign config doesn't have ${to} panel\n},\n\n`;
 	}
 
 	if (!sourcePanel?.fields || !targetPanel?.fields) {
@@ -164,10 +196,10 @@ function mapPanels(initialConfiguration, redesignConfiguration, from, to) {
 	}
 
 	if (typeof targetFields === 'string') {
-		return `{\n		Redesign config doesn't have ${to}\n},\n\n`;
+		return `{\n		Redesign config doesn't have ${to} panel\n},\n\n`;
 	}
 	if (typeof sourceFields === 'string') {
-		return `{\n		Initial config doesn't have ${from}\n},\n\n`;
+		return `{\n		Initial config doesn't have ${from} panel\n},\n\n`;
 	}
 
 	const { matchedFields, mismatchedFields, remainingInitialFields, remainingRedesignFields } = findMatchingFields(
@@ -303,11 +335,47 @@ function mapCollections(initialConfiguration, redesignConfiguration, source, tar
 	const sourceFields = extractFields(initialCollectionFields, source);
 	const targetFields = extractFields(redesignCollectionFields, target);
 
+	// const sourceFields = [
+	// 	{
+	// 		name: 'read_more_caption',
+	// 		label: 'More Caption',
+	// 		type: 'text',
+	// 	},
+	// 	{
+	// 		name: 'title',
+	// 		label: 'Title',
+	// 		type: 'text',
+	// 	},
+	// 	{
+	// 		name: 'description',
+	// 		label: 'Description',
+	// 		type: 'textarea',
+	// 	},
+	// ];
+
+	// const targetFields = [
+	// 	{
+	// 		name: 'more_caption',
+	// 		label: 'More Caption',
+	// 		type: 'text',
+	// 	},
+	// 	{
+	// 		name: 'title',
+	// 		label: 'Title',
+	// 		type: 'text',
+	// 	},
+	// 	{
+	// 		name: 'desc',
+	// 		label: 'Description',
+	// 		type: 'textarea',
+	// 	},
+	// ];
+
 	if (typeof targetFields === 'string') {
-		return `{\n		Redesign config doesn't have ${target}\n},\n\n`;
+		return `{\n		Redesign config doesn't have ${target} collection\n},\n\n`;
 	}
 	if (typeof sourceFields === 'string') {
-		return `{\n		Initial config doesn't have ${source}\n},\n\n`;
+		return `{\n		Initial config doesn't have ${source} collection\n},\n\n`;
 	}
 
 	const { matchedFields, mismatchedFields, remainingInitialFields, remainingRedesignFields } = findMatchingFields(
@@ -363,50 +431,44 @@ function generateFieldsBlock(matchedFields, mismatchedFields, remainingInitialFi
 		matchedFields.length ? `\n\n		// ${matchedFields.map((field) => `'${field}'`).join(', ')} exist in both. ` : ''
 	}${
 		mismatchedFields.length
-			? `But, Some fields have matched with mismatched types. (${mismatchedFields.map(
-					(field) => `'${field.fieldName}'`
-			  )}). `
+			? `But the following has mismatched types. (${mismatchedFields.map((field) => `'${field.fieldName}'`)}). `
 			: ''
-	}
-
-		${
-			remainingInitialFields.length
-				? `// [INITIAL FIELDS]\n		${remainingInitialFields
-						.map((field) => `// fields.REDESIGN_FIELD = fields.${field.name};`)
-						.join('\n		')}`
-				: "// The old template doesn't have any fields!"
-		}
-		${remainingRedesignFields.some((field) => field.required) ? '\n\n		// [REQUIRED REDESIGN FIELDS]' : ''}
+	}${
+		remainingInitialFields.length
+			? `\n\n		// [INITIAL FIELDS]\n		${remainingInitialFields
+					.map((field) => `// fields.REDESIGN_FIELD = fields.${field.name};`)
+					.join('\n		')}`
+			: "\n\n		// The old template doesn't have any fields!"
+	}${remainingRedesignFields.some((field) => field.required) ? '\n\n		// [REQUIRED REDESIGN FIELDS]' : ''}
 		${remainingRedesignFields
 			.filter((field) => field.required)
 			.map((field) => `fields.${field.name} = 'DEFAULT';`)
-			.join('\n		')}
+			.join('\n		')}${
+		remainingRedesignFields.length
+			? '\n\n		// [REMAINING REDESIGN FIELDS]'
+			: "\n\n		// The New template doesn't have any fields!"
+	}${
+		remainingRedesignFields
+			? remainingRedesignFields
+					.filter((field) => !field.required)
+					.map(
+						(field) =>
+							`\n		// '${field.name}' ${
+								field?.moduleForm?.options && field?.moduleForm?.options.length > 0
+									? `with ${field?.moduleForm?.options.length} options: ${field?.moduleForm?.options
+											.map((option) => "'" + option.value + "'")
+											.join(', ')}`
+									: ''
+							}`
+					)
+					.join('')
+			: ''
+	}
 
-		// [REMAINING REDESIGN FIELDS]
-		${
-			remainingRedesignFields
-				? remainingRedesignFields
-						.filter((field) => !field.required)
-						.map(
-							(field) =>
-								`// '${field.name}' ${
-									field?.moduleForm?.options && field?.moduleForm?.options.length > 0
-										? `with ${
-												field?.moduleForm?.options.length
-										  } options: ${field?.moduleForm?.options
-												.map((option) => "'" + option.value + "'")
-												.join(', ')}`
-										: ''
-								}`
-						)
-						.join('\n		')
-				: ''
-		}
-
-		// [DELETE]
+		// [DELETE old fields]
 		${
 			remainingInitialFields.length
-				? remainingInitialFields.map((field) => `delete fields.${field.name};`).join('\n		')
+				? remainingInitialFields.map((field) => `// delete fields.${field.name};`).join('\n		')
 				: '// Nothing to delete!'
 		}
 
@@ -456,7 +518,7 @@ function generateFieldsBlockForWidgets(
 		matchedFields.length
 			? `	// ${matchedFields.map((field) => `'${field}'`).join(', ')} matched in both widgets. ${
 					mismatchedFields.length
-						? ' But some appear to have mismatched types (' +
+						? 'But the following has mismatched types (' +
 						  mismatchedFields.map((field) => `'${field.fieldName}'`).join(', ') +
 						  ')'
 						: ''
@@ -472,8 +534,8 @@ function generateFieldsBlockForWidgets(
 								.join('\n				')
 						: ''
 				}\n
-				// ------ REDESIGN FIELDS ------ //
-				${remainingRedesignFields.length ? `// ${remainingRedesignFields.map((field) => `'${field.name}'`).join(',')}` : ''}
+				// [REQUIRED REDESIGN FIELDS]
+				${remainingRedesignFields.length ? `// ${remainingRedesignFields.map((field) => `${field.name}`).join(',')}` : ''}
 			}
 		},`
 			: ''
@@ -483,6 +545,14 @@ function generateFieldsBlockForWidgets(
 				? `{
 			$set: {
 				${remainingRedesignFields.map((field) => `// 'data.${field.name}': 'DEFAULT',`).join('\n				')}
+			}
+		},`
+				: ''
+		}
+		${
+			remainingInitialFields.length
+				? `{\n			$unset: {
+					${remainingInitialFields.map((field) => `// 'data.${field.name}': '',`).join('\n		')}
 			}
 		},`
 				: ''
